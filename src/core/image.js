@@ -40,6 +40,7 @@ var PDFImage = (function PDFImageClosure() {
       promise.resolve(image);
     }
   }
+
   /**
    * Decode and clamp a value. The formula is different from the spec because we
    * don't decode to float range [0,1], we decode it in the [0,max] range.
@@ -49,6 +50,7 @@ var PDFImage = (function PDFImageClosure() {
     // Clamp the value to the range
     return (value < 0 ? 0 : (value > max ? max : value));
   }
+
   function PDFImage(xref, res, image, inline, smask, mask, isMask) {
     this.image = image;
     if (image.getParams) {
@@ -240,11 +242,13 @@ var PDFImage = (function PDFImageClosure() {
                       this.smask && this.smask.width || 0,
                       this.mask && this.mask.width || 0);
     },
+
     get drawHeight() {
       return Math.max(this.height,
                       this.smask && this.smask.height || 0,
                       this.mask && this.mask.height || 0);
     },
+
     decodeBuffer: function PDFImage_decodeBuffer(buffer) {
       var bpc = this.bpc;
       var decodeMap = this.decode;
@@ -271,6 +275,7 @@ var PDFImage = (function PDFImageClosure() {
         }
       }
     },
+
     getComponents: function PDFImage_getComponents(buffer) {
       var bpc = this.bpc;
 
@@ -345,6 +350,7 @@ var PDFImage = (function PDFImageClosure() {
       }
       return output;
     },
+
     fillOpacity: function PDFImage_fillOpacity(rgbaBuf, width, height,
                                                actualHeight, image) {
       var smask = this.smask;
@@ -411,6 +417,7 @@ var PDFImage = (function PDFImageClosure() {
         }
       }
     },
+
     undoPreblend: function PDFImage_undoPreblend(buffer, width, height) {
       var matte = this.smask && this.smask.matte;
       if (!matte) {
@@ -427,7 +434,7 @@ var PDFImage = (function PDFImageClosure() {
         var alpha = buffer[i + 3];
         if (alpha === 0) {
           // according formula we have to get Infinity in all components
-          // making it as white (tipical paper color) should be okay
+          // making it white (tipical paper color) should be okay
           buffer[i] = 255;
           buffer[i + 1] = 255;
           buffer[i + 2] = 255;
@@ -439,6 +446,7 @@ var PDFImage = (function PDFImageClosure() {
         buffer[i + 2] = clamp((buffer[i + 2] - matteRgb[2]) * k + matteRgb[2]);
       }
     },
+
     createImageData: function PDFImage_createImageData(forceRGBA) {
       var drawWidth = this.drawWidth;
       var drawHeight = this.drawHeight;
@@ -489,7 +497,6 @@ var PDFImage = (function PDFImageClosure() {
           return imgData;
         }
       }
-
       // imgArray can be incomplete (e.g. after CCITT fax encoding).
       var actualHeight = 0 | (imgArray.length / rowBytes *
                          drawHeight / originalHeight);
@@ -527,6 +534,7 @@ var PDFImage = (function PDFImageClosure() {
 
       return imgData;
     },
+
     fillGrayBuffer: function PDFImage_fillGrayBuffer(buffer) {
       var numComps = this.numComps;
       if (numComps != 1) {
@@ -547,7 +555,7 @@ var PDFImage = (function PDFImageClosure() {
         // inline decoding (= inversion) for 1 bpc images
         var length = width * height;
         if (this.needsDecode) {
-          // invert and scale to {0, 255} 
+          // invert and scale to {0, 255}
           for (var i = 0; i < length; ++i) {
             buffer[i] = (comps[i] - 1) & 255;
           }
@@ -570,6 +578,7 @@ var PDFImage = (function PDFImageClosure() {
         buffer[i] = (scale * comps[i]) | 0;
       }
     },
+
     getImageBytes: function PDFImage_getImageBytes(length) {
       this.image.reset();
       return this.image.getBytes(length);
