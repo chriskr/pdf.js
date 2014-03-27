@@ -852,6 +852,8 @@ var JpegImage = (function jpegImage() {
         return true;
       } else if (this.numComponents == 3) {
         return true;
+      } else if (typeof this.colorTransform !== 'undefined') {
+        return !!this.colorTransform;
       } else {
         return false;
       }
@@ -871,23 +873,51 @@ var JpegImage = (function jpegImage() {
     },
 
     _convertYcckToRgb: function convertYcckToRgb(data) {
-      var Y, Cb, Cr, K, C, M, Ye, oneMinusK255th;
-      var outputData = new Uint8Array((data.length / 4) * 3);
+      var Y, Cb, Cr, c, m, y, k;
       var offset = 0;
       for (var i = 0; i < data.length; i += this.numComponents) {
         Y  = data[i];
         Cb = data[i + 1];
         Cr = data[i + 2];
-        K = data[i + 3];
-        C = 255 - clamp0to255(Y + 1.402 * (Cr - 128));
-        M = 255 - clamp0to255(Y - 0.3441363 * (Cb - 128) - 0.71413636 * (Cr - 128));
-        Ye = 255 - clamp0to255(Y + 1.772 * (Cb - 128));
-        oneMinusK255th = (1 - K / 255);
-        outputData[offset++] = 255 - clamp0to255(C * oneMinusK255th + K);
-        outputData[offset++] = 255 - clamp0to255(M * oneMinusK255th + K);
-        outputData[offset++] = 255 - clamp0to255(Ye * oneMinusK255th + K);
+        k = data[i + 3];
+        c = clamp0to255(434.456 - Y - 1.402 * Cr);
+        m = clamp0to255(119.541 - Y + 0.344 * Cb + 0.714 * Cr);
+        y = clamp0to255(481.816 - Y - 1.772 * Cb);
+
+        c /= 255; m /= 255; y /= 255; k /= 255;
+
+        var r =
+          c * (-4.387332384609988 * c + 54.48615194189176 * m +
+               18.82290502165302 * y + 212.25662451639585 * k +
+               -285.2331026137004) +
+          m * (1.7149763477362134 * m - 5.6096736904047315 * y +
+               -17.873870861415444 * k - 5.497006427196366) +
+          y * (-2.5217340131683033 * y - 21.248923337353073 * k +
+               17.5119270841813) +
+          k * (-21.86122147463605 * k - 189.48180835922747) + 255;
+        var g =
+          c * (8.841041422036149 * c + 60.118027045597366 * m +
+               6.871425592049007 * y + 31.159100130055922 * k +
+               -79.2970844816548) +
+          m * (-15.310361306967817 * m + 17.575251261109482 * y +
+               131.35250912493976 * k - 190.9453302588951) +
+          y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) +
+          k * (-20.737325471181034 * k - 187.80453709719578) + 255;
+        var b =
+          c * (0.8842522430003296 * c + 8.078677503112928 * m +
+               30.89978309703729 * y - 0.23883238689178934 * k +
+               -14.183576799673286) +
+          m * (10.49593273432072 * m + 63.02378494754052 * y +
+               50.606957656360734 * k - 112.23884253719248) +
+          y * (0.03296041114873217 * y + 115.60384449646641 * k +
+               -193.58209356861505) +
+          k * (-22.33816807309886 * k - 180.12613974708367) + 255;
+
+        data[offset++] = clamp0to255(r);
+        data[offset++] = clamp0to255(g);
+        data[offset++] = clamp0to255(b);
       }
-      return outputData;
+      return data;
     },
 
     _convertYcckToCmyk: function convertYcckToCmyk(data) {
@@ -905,21 +935,47 @@ var JpegImage = (function jpegImage() {
     },
 
     _convertCmykToRgb: function convertCmykToRgb(data) {
-      var C, M, Y, K, oneMinusK255th;
-      var outputData = new Uint8Array((data.length / 4) * 3);
+      var c, m, y, k;
       var offset = 0;
       for (var i = 0; i < data.length; i += this.numComponents) {
-        C = data[i   ];
-        M = data[i + 1];
-        Y = data[i + 2];
-        K = data[i + 3];
-        oneMinusK255th = (1 - K / 255);
-        outputData[offset++] = 255 - clamp0to255(C * oneMinusK255th + K);
-        outputData[offset++] = 255 - clamp0to255(M * oneMinusK255th + K);
-        outputData[offset++] = 255 - clamp0to255(Y * oneMinusK255th + K);
-        // K in data[i + 3] is unchanged
+        c = data[i   ];
+        m = data[i + 1];
+        y = data[i + 2];
+        k = data[i + 3];
+        c /= 255; m /= 255; y /= 255; k /= 255;
+
+        var r =
+          c * (-4.387332384609988 * c + 54.48615194189176 * m +
+               18.82290502165302 * y + 212.25662451639585 * k +
+               -285.2331026137004) +
+          m * (1.7149763477362134 * m - 5.6096736904047315 * y +
+               -17.873870861415444 * k - 5.497006427196366) +
+          y * (-2.5217340131683033 * y - 21.248923337353073 * k +
+               17.5119270841813) +
+          k * (-21.86122147463605 * k - 189.48180835922747) + 255;
+        var g =
+          c * (8.841041422036149 * c + 60.118027045597366 * m +
+               6.871425592049007 * y + 31.159100130055922 * k +
+               -79.2970844816548) +
+          m * (-15.310361306967817 * m + 17.575251261109482 * y +
+               131.35250912493976 * k - 190.9453302588951) +
+          y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) +
+          k * (-20.737325471181034 * k - 187.80453709719578) + 255;
+        var b =
+          c * (0.8842522430003296 * c + 8.078677503112928 * m +
+               30.89978309703729 * y - 0.23883238689178934 * k +
+               -14.183576799673286) +
+          m * (10.49593273432072 * m + 63.02378494754052 * y +
+               50.606957656360734 * k - 112.23884253719248) +
+          y * (0.03296041114873217 * y + 115.60384449646641 * k +
+               -193.58209356861505) +
+          k * (-22.33816807309886 * k - 180.12613974708367) + 255;
+
+        data[offset++] = clamp0to255(r);
+        data[offset++] = clamp0to255(g);
+        data[offset++] = clamp0to255(b);
       }
-      return outputData;
+      return data;
     },
 
     getData: function getData(width, height, forceRGBoutput) {

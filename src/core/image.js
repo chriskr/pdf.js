@@ -496,6 +496,11 @@ var PDFImage = (function PDFImageClosure() {
           }
           return imgData;
         }
+        if (this.image instanceof JpegStream) {
+          imgData.kind = ImageKind.RGB_24BPP;
+          imgData.data = imgArray;
+          return imgData;
+        }
       }
       // imgArray can be incomplete (e.g. after CCITT fax encoding).
       var actualHeight = 0 | (imgArray.length / rowBytes *

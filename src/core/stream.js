@@ -870,7 +870,7 @@ var JpegStream = (function JpegStreamClosure() {
       jpegImage.parse(this.bytes);
       var width = jpegImage.width;
       var height = jpegImage.height;
-      var data = jpegImage.getData(width, height);
+      var data = jpegImage.getData(width, height, /* forceRGBoutput = */true);
       this.buffer = data;
       this.bufferLength = data.length;
       this.eof = true;
