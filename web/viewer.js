@@ -1748,6 +1748,11 @@ function webViewerInitialized() {
       (hashParams['ignoreCurrentPositionOnZoom'] === 'true');
   }
 
+  if ('disableMultilineTextLayer' in hashParams) {
+    PDFJS.disableMultilineTextLayer =
+      (hashParams['disableMultilineTextLayer'] === 'true');
+  }
+
 //#if !PRODUCTION
   if ('disableBcmaps' in hashParams && hashParams['disableBcmaps']) {
     PDFJS.cMapUrl = '../external/cmaps/';

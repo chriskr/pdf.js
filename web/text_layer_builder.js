@@ -40,6 +40,19 @@ var TextLayerBuilder = function textLayerBuilder(options) {
   this.lastScrollSource = options.lastScrollSource;
   this.viewport = options.viewport;
   this.isViewerInPresentationMode = options.isViewerInPresentationMode;
+  this.currentDiv = null;
+  this.currentX = 0;
+  this.currentXStart = 0;
+  this.currentXEnd = 0;
+  this.currentY = 0;
+  this.currentYStart = 0;
+  this.currentFontHeight = 0;
+  this.currentFontName = "";
+  this.currentFontFamily = "";
+  this.currentLineHeight = 0;
+  this.currentRowCount = 0;
+  this.currentLastElement = null;
+  this.isBlockBuilding = false;
 
   if (typeof PDFFindController === 'undefined') {
     window.PDFFindController = null;
@@ -60,9 +73,12 @@ var TextLayerBuilder = function textLayerBuilder(options) {
   };
 
   this.renderLayer = function textLayerBuilderRenderLayer() {
+    this.setVerticalScale();
     var textDivs = this.textDivs;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
+    var textDiv = null;
+    var font = "";
 
     // No point in rendering so many divs as it'd make the browser unusable
     // even after the divs are rendered
@@ -72,22 +88,54 @@ var TextLayerBuilder = function textLayerBuilder(options) {
     }
 
     for (var i = 0, ii = textDivs.length; i < ii; i++) {
-      var textDiv = textDivs[i];
-      if ('isWhitespace' in textDiv.dataset) {
+      var textEle = textDivs[i];
+      if ('isWhitespace' in textEle.dataset) {
         continue;
       }
 
-      ctx.font = textDiv.style.fontSize + ' ' + textDiv.style.fontFamily;
-      var width = ctx.measureText(textDiv.textContent).width;
+      var isDiv = /div/i.test(textEle.nodeName);
+      var textContent = textEle.textContent;
+      if (isDiv) {
+        ctx.font = textEle.style.fontSize + ' ' + textEle.style.fontFamily;
+      } else {
+        if (textDiv != textEle.parentNode) {
+          textDiv = textEle.parentNode;
+          font = textDiv.style.fontSize + ' ' + textDiv.style.fontFamily;
+          ctx.font = font;
+        }
+
+        if (textEle.style.fontSize) {
+          ctx.font = textEle.style.fontSize + ' ' + textEle.style.fontFamily;
+        }
+      }
+
+      var width = ctx.measureText(textContent).width;
+      if (!isDiv && textEle.style.fontSize) {
+        ctx.font = font;
+      }
 
       if (width > 0) {
-        textLayerFrag.appendChild(textDiv);
-        var textScale = textDiv.dataset.canvasWidth / width;
-        var rotation = textDiv.dataset.angle;
-        var transform = 'scale(' + textScale + ', 1)';
-        transform = 'rotate(' + rotation + 'deg) ' + transform;
-        CustomStyle.setProp('transform' , textDiv, transform);
-        CustomStyle.setProp('transformOrigin' , textDiv, '0% 0%');
+        if (isDiv) {
+          textLayerFrag.appendChild(textEle);
+        } else if (textEle.parentNode.parentNode != textLayerFrag) {
+          textLayerFrag.appendChild(textEle.parentNode);
+        }
+
+        var rotation = textEle.dataset.angle;
+        var length = textContent.length;
+        if (length == 1) {
+          textEle.style.width = textEle.dataset.canvasWidth + 'px';
+        } else if (rotation === '0' || !isDiv) {
+          var delta = textEle.dataset.canvasWidth - width;
+          var letterSpacing = delta / length + 'px';
+          textEle.style.letterSpacing = letterSpacing;
+        } else {
+          var textScale = textEle.dataset.canvasWidth / width;
+          var transform = 'rotate(' + rotation + 'deg) ' +
+            'scale(' + textScale + ', 1)';
+          CustomStyle.setProp('transform' , textEle, transform);
+          CustomStyle.setProp('transformOrigin' , textEle, '0% 0%');
+        }
       }
     }
 
@@ -118,25 +166,150 @@ var TextLayerBuilder = function textLayerBuilder(options) {
     }
   };
 
+  this.setBlockContainer = function textLayerBuilderSetBlockContainer() {
+    var textDiv = this.textDivs.pop();
+    var textSpan = document.createElement('span');
+    textSpan.dataset.canvasWidth = textDiv.dataset.canvasWidth;
+    this.currentDiv.appendChild(textSpan);
+    this.textDivs.push(textSpan);
+    this.currentXStart = this.currentX;
+    this.isBlockBuilding = true;
+  };
+
+  this.setVerticalScale = function textLayerBuilderSetVerticalScale() {
+    if (this.currentRowCount && this.currentDiv) {
+      var deltaY = this.currentY - this.currentYStart;
+      var setLineHeight = deltaY / this.currentRowCount | 0;
+      this.currentDiv.style.lineHeight = setLineHeight + 'px';
+      var vLineScale = deltaY / (this.currentRowCount * setLineHeight);
+      var transform = 'scale(1, ' + vLineScale + ')';
+      CustomStyle.setProp('transform' , this.currentDiv, transform);
+      CustomStyle.setProp('transformOrigin' , this.currentDiv, '0% 0%');
+      this.currentRowCount = 0;
+      var delta = this.currentFontHeight - this.currentLineHeight;
+      if (delta) {
+        this.currentDiv.style.marginTop = Math.round(delta / 2) + 'px';
+      }
+    }
+  };
+
+  this.createTextElement =
+    function textLayerBuilderCreateTextElement (name, geom, fontHeight,
+                                                isBlockLevel) {
+    var ele = document.createElement(name);
+    ele.dataset.canvasWidth = geom.canvasWidth * Math.abs(geom.hScale);
+    if (isBlockLevel) {
+      ele.dataset.fontName = geom.fontName;
+      ele.dataset.angle = geom.angle * (180 / Math.PI);
+      ele.style.fontSize = fontHeight + 'px';
+      ele.style.fontFamily = geom.fontFamily;
+    }
+    return ele;
+  }
+
   this.appendText = function textLayerBuilderAppendText(geom) {
-    var textDiv = document.createElement('div');
-
+    var x = geom.x;
+    var y = geom.y;
+    var fontName = geom.fontName;
+    var abs = Math.abs;
     // vScale and hScale already contain the scaling to pixel units
-    var fontHeight = geom.fontSize * Math.abs(geom.vScale);
-    textDiv.dataset.canvasWidth = geom.canvasWidth * Math.abs(geom.hScale);
-    textDiv.dataset.fontName = geom.fontName;
-    textDiv.dataset.angle = geom.angle * (180 / Math.PI);
+    var fontHeight = geom.fontSize * abs(geom.vScale) | 0;
+    var deltaX = abs(geom.x - this.currentX);
+    var deltaY = abs(geom.y - this.currentY);
+    var isSameLine = !PDFJS.disableMultilineTextLayer && geom.angle === 0 &&
+      (fontHeight == this.currentFontHeight || this.isBlockBuilding) &&
+      abs(geom.x - this.currentXEnd) < this.currentFontHeight &&
+      abs(geom.y -this.currentY) < this.currentFontHeight / 2;
+    var isNewLine = !PDFJS.disableMultilineTextLayer && geom.angle === 0 &&
+      fontHeight == this.currentFontHeight &&
+      (deltaX < 8 * fontHeight) &&
+      ((this.currentLineHeight && (geom.y > this.currentY) &&
+        abs(deltaY - this.currentLineHeight) < this.currentLineHeight / 100) ||
+      (!this.currentLineHeight && (deltaY > fontHeight / 2) &&
+      (this.isBlockBuilding || fontName == this.currentFontName) &&
+      (deltaY < 1.5 * fontHeight)));
+    var hasDifferentFont = fontHeight != this.currentFontHeight ||
+      geom.fontFamily != this.currentFontFamily;
 
-    textDiv.style.fontSize = fontHeight + 'px';
-    textDiv.style.fontFamily = geom.fontFamily;
-    var fontAscent = (geom.ascent ? geom.ascent * fontHeight :
-      (geom.descent ? (1 + geom.descent) * fontHeight : fontHeight));
-    textDiv.style.left = (geom.x + (fontAscent * Math.sin(geom.angle))) + 'px';
-    textDiv.style.top = (geom.y - (fontAscent * Math.cos(geom.angle))) + 'px';
+    if (isSameLine) {
+      if (!this.isBlockBuilding) {
+        this.setBlockContainer();
+      }
 
-    // The content of the div is set in the `setTextContent` function.
+      var textSpan = this.createTextElement('span', geom, fontHeight,
+                                            hasDifferentFont);
+      var shiftX = geom.x - this.currentXEnd;
+      if (shiftX) {
+        if (shiftX > fontHeight / 5) {
+          // Add whitespace.
+          var span = document.createElement('span');
+          span.appendChild(document.createTextNode(' '));
+          span.classList.add('inline-block');
+          span.style.width = shiftX + 'px';
+          this.currentDiv.appendChild(span);
+        } else {
+          textSpan.style.marginLeft = shiftX + 'px';
+        }
+      }
 
-    this.textDivs.push(textDiv);
+      if (/span/i.test(this.currentLastElement.nodeName)) {
+        this.currentLastElement.classList.add('inline-block');
+      }
+
+      textSpan.classList.add('inline-block');
+      this.currentDiv.appendChild(textSpan);
+      this.textDivs.push(textSpan);
+      this.currentXEnd = geom.x + geom.canvasWidth * abs(geom.hScale);
+      if (fontHeight == this.currentFontHeight) {
+        this.currentY = geom.y;
+      }
+
+      this.currentLastElement = textSpan;
+    } else if (isNewLine) {
+      if (!this.isBlockBuilding) {
+        this.setBlockContainer();
+      }
+
+      if (!this.currentLineHeight) {
+        this.currentLineHeight = deltaY;
+      }
+      this.currentRowCount++;
+      this.currentDiv.appendChild(document.createTextNode('\n'));
+      var textSpan = this.createTextElement('span', geom, fontHeight,
+                                            hasDifferentFont);
+      var shiftX = geom.x - this.currentX;
+      if (shiftX) {
+        textSpan.style.marginLeft = shiftX + 'px';
+      }
+
+      this.currentDiv.appendChild(textSpan);
+      this.textDivs.push(textSpan);
+      this.currentY = geom.y;
+      this.currentXEnd = geom.x + geom.canvasWidth * abs(geom.hScale);
+      this.currentLastElement = textSpan;
+
+    } else {
+      this.setVerticalScale();
+      this.currentX = geom.x;
+      this.currentY = geom.y;
+      this.currentYStart = geom.y;
+      this.currentFontHeight = fontHeight;
+      this.currentFontName = fontName;
+      this.currentFontFamily = geom.fontFamily;
+      this.isBlockBuilding = false;
+      this.currentXStart = 0;
+      this.currentLineHeight = 0;
+      this.currentXEnd = geom.x + geom.canvasWidth * abs(geom.hScale);
+      var textDiv = this.createTextElement('div', geom, fontHeight, true);
+      var fontAscent = (geom.ascent ? geom.ascent * fontHeight :
+        (geom.descent ? (1 + geom.descent) * fontHeight : fontHeight));
+      textDiv.style.left = (geom.x + (fontAscent * Math.sin(geom.angle))) + 'px';
+      textDiv.style.top = (geom.y - (fontAscent * Math.cos(geom.angle))) + 'px';
+      // The content of the div is set in the `setTextContent` function.
+      this.textDivs.push(textDiv);
+      this.currentDiv = textDiv;
+      this.currentLastElement = textDiv;
+    }
   };
 
   this.insertDivContent = function textLayerUpdateTextContent() {

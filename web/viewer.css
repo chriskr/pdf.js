@@ -1024,7 +1024,7 @@ html[dir='rtl'] .verticalToolbarSeparator {
 }
 
 .horizontalToolbarSeparator {
-  display: block; 
+  display: block;
   margin: 0 0 4px 0;
   height: 1px;
   width: 100%;
@@ -1281,6 +1281,7 @@ canvas {
   color: #000;
   font-family: sans-serif;
   overflow: hidden;
+  opacity: .35;
 }
 
 .textLayer > div {
@@ -1289,6 +1290,12 @@ canvas {
   line-height: 1;
   white-space: pre;
   cursor: text;
+}
+
+.textLayer > div > span.inline-block {
+  display: inline-block;
+  margin-top: -1em;
+  margin-bottom: -1em;
 }
 
 .textLayer .highlight {
@@ -1318,8 +1325,8 @@ canvas {
 /* TODO: file FF bug to support ::-moz-selection:window-inactive
    so we can override the opaque grey background when the window is inactive;
    see https://bugzilla.mozilla.org/show_bug.cgi?id=706209 */
-::selection { background:rgba(0,0,255,0.3); }
-::-moz-selection { background:rgba(0,0,255,0.3); }
+::selection { background-color: Highlight; }
+::-moz-selection { background-color: Highlight; }
 
 .annotationHighlight {
   position: absolute;
@@ -1482,7 +1489,7 @@ canvas {
 }
 
 #documentPropertiesContainer .separator {
-  display: block; 
+  display: block;
   margin: 4px 0 4px 0;
   height: 1px;
   width: 100%;
@@ -1660,7 +1667,7 @@ html[dir='rtl'] #documentPropertiesContainer .row > * {
     background: url(images/toolbarButton-menuArrows@2x.png) no-repeat;
     background-size: 7px 16px;
   }
-  
+
   html[dir='ltr'] .toolbarButton#sidebarToggle::before {
     content: url(images/toolbarButton-sidebarToggle@2x.png);
   }
