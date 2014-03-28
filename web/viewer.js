@@ -1750,6 +1750,15 @@ function webViewerInitialized() {
       (hashParams['ignoreCurrentPositionOnZoom'] === 'true');
   }
 
+  if ('disableMultilineTextLayer' in hashParams) {
+    PDFJS.disableMultilineTextLayer =
+      (hashParams['disableMultilineTextLayer'] === 'true');
+  }
+
+  if ('debugTextLayer' in hashParams) {
+    document.body.classList.add('debug-text-layer');
+  }
+
 //#if !PRODUCTION
   if ('disableBcmaps' in hashParams && hashParams['disableBcmaps']) {
     PDFJS.cMapUrl = '../external/cmaps/';
