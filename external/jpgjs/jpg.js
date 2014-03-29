@@ -508,7 +508,9 @@ var JpegImage = (function jpegImage() {
     // convert to 8-bit integers
     for (i = 0; i < 64; ++i) {
       var index = blockBufferOffset + i;
-      component.blockData[index] = clampTo8bitInt((p[i] + 2056) >> 4);
+      var q = p[i];
+      q = (q <= -2056) ? 0 : (q >= 2024) ? 255 : (q + 2056) >> 4;
+      component.blockData[index] = q;
     }
   }
 
@@ -527,10 +529,6 @@ var JpegImage = (function jpegImage() {
       }
     }
     return component.blockData;
-  }
-
-  function clampTo8bitInt(a) {
-    return a <= 0 ? 0 : a >= 255 ? 255 : a | 0;
   }
 
   function clamp0to255(a) {
@@ -865,9 +863,9 @@ var JpegImage = (function jpegImage() {
         Y  = data[i    ];
         Cb = data[i + 1];
         Cr = data[i + 2];
-        data[i    ] = clamp0to255(Y + 1.402 * (Cr - 128));
-        data[i + 1] = clamp0to255(Y - 0.3441363 * (Cb - 128) - 0.71413636 * (Cr - 128));
-        data[i + 2] = clamp0to255(Y + 1.772 * (Cb - 128));
+        data[i    ] = clamp0to255(Y - 179.456 + 1.402 * Cr);
+        data[i + 1] = clamp0to255(Y + 135.459 - 0.344 * Cb - 0.714 * Cr);
+        data[i + 2] = clamp0to255(Y - 226.816 + 1.772 * Cb);
       }
       return data;
     },
@@ -932,9 +930,9 @@ var JpegImage = (function jpegImage() {
         Y  = data[i];
         Cb = data[i + 1];
         Cr = data[i + 2];
-        data[i    ] = 255 - clamp0to255(Y + 1.402 * (Cr - 128));
-        data[i + 1] = 255 - clamp0to255(Y - 0.3441363 * (Cb - 128) - 0.71413636 * (Cr - 128));
-        data[i + 2] = 255 - clamp0to255(Y + 1.772 * (Cb - 128));
+        data[i    ] = clamp0to255(434.456 - Y - 1.402 * Cr);
+        data[i + 1] = clamp0to255(119.541 - Y + 0.344 * Cb + 0.714 * Cr);
+        data[i + 2] = clamp0to255(481.816 - Y - 1.772 * Cb);
         // K in data[i + 3] is unchanged
       }
       return data;
