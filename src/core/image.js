@@ -462,7 +462,7 @@ var PDFImage = (function PDFImageClosure() {
 
       // Rows start at byte boundary.
       var rowBytes = (originalWidth * numComps * bpc + 7) >> 3;
-      var imgArray = this.getImageBytes(originalHeight * rowBytes);
+      var imgArray;
 
       if (!forceRGBA) {
         // If it is a 1-bit-per-pixel grayscale (i.e. black-and-white) image
@@ -482,6 +482,7 @@ var PDFImage = (function PDFImageClosure() {
             drawWidth === originalWidth && drawHeight === originalHeight) {
           imgData.kind = kind;
 
+          imgArray = this.getImageBytes(originalHeight * rowBytes);
           // If imgArray came from a DecodeStream, we're safe to transfer it
           // (and thus neuter it) because it will constitute the entire
           // DecodeStream's data.  But if it came from a Stream, we need to
@@ -496,12 +497,15 @@ var PDFImage = (function PDFImageClosure() {
           }
           return imgData;
         }
-        if (this.image instanceof JpegStream) {
-          imgData.kind = ImageKind.RGB_24BPP;
-          imgData.data = imgArray;
-          return imgData;
-        }
       }
+      if (this.image instanceof JpegStream) {
+        imgData.kind = ImageKind.RGB_24BPP;
+        imgData.data = this.getImageBytes(originalHeight * rowBytes,
+                                          drawWidth, drawHeight);
+        return imgData;
+      }
+
+      imgArray = this.getImageBytes(originalHeight * rowBytes);
       // imgArray can be incomplete (e.g. after CCITT fax encoding).
       var actualHeight = 0 | (imgArray.length / rowBytes *
                          drawHeight / originalHeight);
@@ -584,8 +588,11 @@ var PDFImage = (function PDFImageClosure() {
       }
     },
 
-    getImageBytes: function PDFImage_getImageBytes(length) {
+    getImageBytes: function PDFImage_getImageBytes(length,
+                                                   drawWidth, drawHeight) {
       this.image.reset();
+      this.image.drawWidth = drawWidth;
+      this.image.drawHeight = drawHeight;
       return this.image.getBytes(length);
     }
   };
