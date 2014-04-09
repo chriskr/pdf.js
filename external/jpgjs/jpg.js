@@ -508,7 +508,9 @@ var JpegImage = (function jpegImage() {
     // convert to 8-bit integers
     for (i = 0; i < 64; ++i) {
       var index = blockBufferOffset + i;
-      component.blockData[index] = clampTo8bitInt((p[i] + 2056) >> 4);
+      var q = p[i];
+      q = (q <= -2056) ? 0 : (q >= 2024) ? 255 : (q + 2056) >> 4;
+      component.blockData[index] = q;
     }
   }
 
@@ -527,10 +529,6 @@ var JpegImage = (function jpegImage() {
       }
     }
     return component.blockData;
-  }
-
-  function clampTo8bitInt(a) {
-    return a <= 0 ? 0 : a >= 255 ? 255 : a | 0;
   }
 
   function clamp0to255(a) {
@@ -782,9 +780,10 @@ var JpegImage = (function jpegImage() {
           blocksPerColumn: component.blocksPerColumn
         });
       }
+      this.numComponents = this.components.length;
     },
 
-    getData: function getData(width, height) {
+    _getLinearizedBlockData: function getLinearizedBlockData(width, height) {
       var scaleX = this.width / width, scaleY = this.height / height;
 
       var component, componentScaleX, componentScaleY;
@@ -842,80 +841,185 @@ var JpegImage = (function jpegImage() {
           }
         }
       }
+      return data;
+    },
 
-      // ... then transform colors, if necessary
-      switch (numComponents) {
-        case 1: case 2: break;
-        // no color conversion for one or two compoenents
+    _isColorConversionNeeded: function isColorConversionNeeded() {
+      if (this.adobe && this.adobe.transformCode) {
+        // The adobe transform marker overrides any previous setting
+        return true;
+      } else if (this.numComponents == 3) {
+        return true;
+      } else if (typeof this.colorTransform !== 'undefined') {
+        return !!this.colorTransform;
+      } else {
+        return false;
+      }
+    },
 
-        case 3:
-          // The default transform for three components is true
-          colorTransform = true;
-          // The adobe transform marker overrides any previous setting
-          if (this.adobe && this.adobe.transformCode)
-            colorTransform = true;
-          else if (typeof this.colorTransform !== 'undefined')
-            colorTransform = !!this.colorTransform;
-
-          if (colorTransform) {
-            for (i = 0; i < dataLength; i += numComponents) {
-              Y  = data[i    ];
-              Cb = data[i + 1];
-              Cr = data[i + 2];
-
-              R = clamp0to255(Y + 1.402 * (Cr - 128));
-              G = clamp0to255(Y - 0.3441363 * (Cb - 128) - 0.71413636 * (Cr - 128));
-              B = clamp0to255(Y + 1.772 * (Cb - 128));
-
-              data[i    ] = R;
-              data[i + 1] = G;
-              data[i + 2] = B;
-            }
-          }
-          break;
-        case 4:
-          // The default transform for four components is false
-          colorTransform = false;
-          // The adobe transform marker overrides any previous setting
-          if (this.adobe && this.adobe.transformCode)
-            colorTransform = true;
-          else if (typeof this.colorTransform !== 'undefined')
-            colorTransform = !!this.colorTransform;
-
-          if (colorTransform) {
-            for (i = 0; i < dataLength; i += numComponents) {
-              Y  = data[i];
-              Cb = data[i + 1];
-              Cr = data[i + 2];
-
-              C = 255 - clamp0to255(Y + 1.402 * (Cr - 128));
-              M = 255 - clamp0to255(Y - 0.3441363 * (Cb - 128) - 0.71413636 * (Cr - 128));
-              Ye = 255 - clamp0to255(Y + 1.772 * (Cb - 128));
-
-              data[i    ] = C;
-              data[i + 1] = M;
-              data[i + 2] = Ye;
-              // K is unchanged
-            }
-          }
-          break;
-        default:
-          throw 'Unsupported color mode';
+    _convertYccToRgb: function convertYccToRgb(data) {
+      var Y, Cb, Cr;
+      for (var i = 0; i < data.length; i += this.numComponents) {
+        Y  = data[i    ];
+        Cb = data[i + 1];
+        Cr = data[i + 2];
+        data[i    ] = clamp0to255(Y - 179.456 + 1.402 * Cr);
+        data[i + 1] = clamp0to255(Y + 135.459 - 0.344 * Cb - 0.714 * Cr);
+        data[i + 2] = clamp0to255(Y - 226.816 + 1.772 * Cb);
       }
       return data;
     },
+
+    _convertYcckToRgb: function convertYcckToRgb(data) {
+      var Y, Cb, Cr, k, CbCb, CbCr, CbY, Cbk, CrCr, Crk, CrY, YY, Yk, kk;
+      var offset = 0;
+      for (var i = 0; i < data.length; i += this.numComponents) {
+        Y  = data[i];
+        Cb = data[i + 1];
+        Cr = data[i + 2];
+        k = data[i + 3];
+
+        CbCb = Cb * Cb;
+        CbCr = Cb * Cr;
+        CbY = Cb * Y;
+        Cbk = Cb * k;
+        CrCr = Cr * Cr;
+        Crk = Cr * k;
+        CrY = Cr * Y;
+        YY = Y * Y;
+        Yk = Y * k;
+        kk = k * k;
+
+        var r = - 122.67195406894
+          - 6.60635669420364e-5 * CbCb + 0.000437130475926232 * CbCr
+          - 5.4080610064599e-5* CbY + 0.00048449797120281* Cbk
+          - 0.154362151871126 * Cb - 0.000957964378445773 * CrCr
+          + 0.000817076911346625 * CrY - 0.00477271405408747 * Crk
+          + 1.53380253221734 * Cr + 0.000961250184130688 * YY
+          - 0.00266257332283933 * Yk + 0.48357088451265 * Y
+          - 0.000336197177618394 * kk + 0.484791561490776 * k;
+
+        var g = 107.268039397724
+          + 2.19927104525741e-5 * CbCb - 0.000640992018297945 * CbCr
+          + 0.000659397001245577* CbY + 0.000426105652938837* Cbk
+          - 0.176491792462875 * Cb - 0.000778269941513683 * CrCr
+          + 0.00130872261408275 * CrY + 0.000770482631801132 * Crk
+          - 0.151051492775562 * Cr + 0.00126935368114843 * YY
+          - 0.00265090189010898 * Yk + 0.25802910206845 * Y
+          - 0.000318913117588328 * kk - 0.213742400323665 * k;
+
+        var b = - 20.810012546947
+          - 0.000570115196973677 * CbCb - 2.63409051004589e-5 * CbCr
+          + 0.0020741088115012* CbY - 0.00288260236853442* Cbk
+          + 0.814272968359295 * Cb - 1.53496057440975e-5 * CrCr
+          - 0.000132689043961446 * CrY + 0.000560833691242812 * Crk
+          - 0.195152027534049 * Cr + 0.00174418132927582 * YY
+          - 0.00255243321439347 * Yk + 0.116935020465145 * Y
+          - 0.000343531996510555 * kk + 0.24165260232407 * k;
+
+        data[offset++] = clamp0to255(r);
+        data[offset++] = clamp0to255(g);
+        data[offset++] = clamp0to255(b);
+      }
+      return data;
+    },
+
+    _convertYcckToCmyk: function convertYcckToCmyk(data) {
+      var Y, Cb, Cr;
+      for (var i = 0; i < data.length; i += this.numComponents) {
+        Y  = data[i];
+        Cb = data[i + 1];
+        Cr = data[i + 2];
+        data[i    ] = clamp0to255(434.456 - Y - 1.402 * Cr);
+        data[i + 1] = clamp0to255(119.541 - Y + 0.344 * Cb + 0.714 * Cr);
+        data[i + 2] = clamp0to255(481.816 - Y - 1.772 * Cb);
+        // K in data[i + 3] is unchanged
+      }
+      return data;
+    },
+
+    _convertCmykToRgb: function convertCmykToRgb(data) {
+      var c, m, y, k;
+      var offset = 0;
+      for (var i = 0; i < data.length; i += this.numComponents) {
+        c = data[i   ] * 0.00392156862745098;
+        m = data[i + 1] * 0.00392156862745098;
+        y = data[i + 2] * 0.00392156862745098;
+        k = data[i + 3] * 0.00392156862745098;
+
+        var r =
+          c * (-4.387332384609988 * c + 54.48615194189176 * m +
+               18.82290502165302 * y + 212.25662451639585 * k +
+               -285.2331026137004) +
+          m * (1.7149763477362134 * m - 5.6096736904047315 * y +
+               -17.873870861415444 * k - 5.497006427196366) +
+          y * (-2.5217340131683033 * y - 21.248923337353073 * k +
+               17.5119270841813) +
+          k * (-21.86122147463605 * k - 189.48180835922747) + 255;
+        var g =
+          c * (8.841041422036149 * c + 60.118027045597366 * m +
+               6.871425592049007 * y + 31.159100130055922 * k +
+               -79.2970844816548) +
+          m * (-15.310361306967817 * m + 17.575251261109482 * y +
+               131.35250912493976 * k - 190.9453302588951) +
+          y * (4.444339102852739 * y + 9.8632861493405 * k - 24.86741582555878) +
+          k * (-20.737325471181034 * k - 187.80453709719578) + 255;
+        var b =
+          c * (0.8842522430003296 * c + 8.078677503112928 * m +
+               30.89978309703729 * y - 0.23883238689178934 * k +
+               -14.183576799673286) +
+          m * (10.49593273432072 * m + 63.02378494754052 * y +
+               50.606957656360734 * k - 112.23884253719248) +
+          y * (0.03296041114873217 * y + 115.60384449646641 * k +
+               -193.58209356861505) +
+          k * (-22.33816807309886 * k - 180.12613974708367) + 255;
+
+        data[offset++] = clamp0to255(r);
+        data[offset++] = clamp0to255(g);
+        data[offset++] = clamp0to255(b);
+      }
+      return data;
+    },
+
+    getData: function getData(width, height, forceRGBoutput) {
+      var i;
+      var Y, Cb, Cr, K, C, M, Ye, R, G, B;
+      var colorTransform;
+      if (this.numComponents > 4) {
+        throw 'Unsupported color mode';
+      }
+      // type of data: Uint8Array(width * height * numComponents)
+      var data = this._getLinearizedBlockData(width, height);
+
+      if (this.numComponents === 3) {
+        return this._convertYccToRgb(data);
+      } else if (this.numComponents === 4) {
+        if (this._isColorConversionNeeded()) {
+          if (forceRGBoutput) {
+            return this._convertYcckToRgb(data);
+          } else {
+            return this._convertYcckToCmyk(data);
+          }
+        } else {
+          return this._convertCmykToRgb(data);
+        }
+      }
+      return data;
+    },
+
     copyToImageData: function copyToImageData(imageData) {
-      var width = imageData.width, height = imageData.height;
+      var width = imageData.width;
+      var height = imageData.height;
       var imageDataBytes = width * height * 4;
       var imageDataArray = imageData.data;
-      var data = this.getData(width, height);
+      var data = this.getData(width, height, /* forceRGBoutput = */true);
+
       var i = 0, j = 0;
-      var Y, K, C, M, R, G, B;
       switch (this.components.length) {
         case 1:
+          var Y;
           while (j < imageDataBytes) {
             Y = data[i++];
-
             imageDataArray[j++] = Y;
             imageDataArray[j++] = Y;
             imageDataArray[j++] = Y;
@@ -923,31 +1027,11 @@ var JpegImage = (function jpegImage() {
           }
           break;
         case 3:
-          while (j < imageDataBytes) {
-            R = data[i++];
-            G = data[i++];
-            B = data[i++];
-
-            imageDataArray[j++] = R;
-            imageDataArray[j++] = G;
-            imageDataArray[j++] = B;
-            imageDataArray[j++] = 255;
-          }
-          break;
         case 4:
           while (j < imageDataBytes) {
-            C = data[i++];
-            M = data[i++];
-            Y = data[i++];
-            K = data[i++];
-
-            R = 255 - clamp0to255(C * (1 - K / 255) + K);
-            G = 255 - clamp0to255(M * (1 - K / 255) + K);
-            B = 255 - clamp0to255(Y * (1 - K / 255) + K);
-
-            imageDataArray[j++] = R;
-            imageDataArray[j++] = G;
-            imageDataArray[j++] = B;
+            imageDataArray[j++] = data[i++];
+            imageDataArray[j++] = data[i++];
+            imageDataArray[j++] = data[i++];
             imageDataArray[j++] = 255;
           }
           break;
