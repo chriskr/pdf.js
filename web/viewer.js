@@ -19,7 +19,8 @@
            getFileName, scrollIntoView, getPDFFileNameFromURL, PDFHistory,
            Preferences, ViewHistory, PageView, ThumbnailView, URL,
            noContextMenuHandler, SecondaryToolbar, PasswordPrompt,
-           PresentationMode, HandTool, Promise, DocumentProperties */
+           PresentationMode, HandTool, Promise, DocumentProperties,
+           FontMetrics */
 
 'use strict';
 
@@ -126,6 +127,7 @@ var PDFView = {
   isViewerEmbedded: (window.parent !== window),
   idleTimeout: null,
   currentPosition: null,
+  fontMetrics: new FontMetrics(),
 
   // called once when the document is loaded
   initialize: function pdfViewInitialize() {
